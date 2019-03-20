@@ -8,6 +8,7 @@ var sassGraph = require('sass-graph');
 var PLUGIN_NAME = 'gulp-sass-inheritance';
 
 var stream;
+var graphObj = {};
 
 function gulpSassInheritance(options) {
   options = options || {};
@@ -16,6 +17,7 @@ function gulpSassInheritance(options) {
   }
 
   var files = [];
+  var graph;
 
   function writeStream(currentFile) {
     if (currentFile && currentFile.contents.length) {
@@ -36,31 +38,35 @@ function gulpSassInheritance(options) {
     var stream = this;
     if (files.length) {
       var allPaths = _.map(files, 'path');
-      var graph = sassGraph.parseDir(options.dir, options);
+      if(!graphObj[options.dir]) {
+        graphObj[options.dir] = sassGraph.parseDir(options.dir, options);
+      }
+      graph = graphObj[options.dir];
       var newFiles = files;
       _.forEach(files, function(file) {
-        if (graph.index && graph.index[file.path]) {
-          var fullpaths = recureOnImports([],graph, file.path);
-
-          fullpaths.forEach(function (path) {
-            if (!_.includes(allPaths, path)) {
-              allPaths.push(path);
-              newFiles.push(new gutil.File({
-                cwd: file.cwd,
-                base: file.base,
-                path: path,
-                stat: fs.statSync(path),
-                contents: fs.readFileSync(path)
-              }));
-            }
-          });
-
-          if (options.debug) {
-            console.log('File', file.path);
-            console.log(' - importedBy', fullpaths);
-          }
+        if(!graph.index) {
+          graph.index = {}
         }
+        graph.addFile(file.path);
+        var fullpaths = recureOnImports([],graph, file.path);
 
+        fullpaths.forEach(function (path) {
+          if (!_.includes(allPaths, path)) {
+            allPaths.push(path);
+            newFiles.push(new gutil.File({
+              cwd: file.cwd,
+              base: file.base,
+              path: path,
+              stat: fs.statSync(path),
+              contents: fs.readFileSync(path)
+            }));
+          }
+        });
+
+        if (options.debug) {
+          console.log('File', file.path);
+          console.log(' - importedBy', fullpaths);
+        }
       });
       es.readArray(files)
         .pipe(es.through(
@@ -70,7 +76,7 @@ function gulpSassInheritance(options) {
           function () {
             stream.emit('end');
           }
-      ));
+        ));
     } else {
       stream.emit('end');
     }
